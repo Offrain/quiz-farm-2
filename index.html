@@ -37,75 +37,166 @@
             padding: 10px 20px;
             font-size: 16px;
         }
+        .pagination {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .pagination button {
+            margin: 5px;
+            padding: 10px;
+            font-size: 16px;
+        }
+        .pagination button.active {
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+        }
+        .pagination button:hover {
+            cursor: pointer;
+            background-color: #0056b3;
+        }
+        .shuffle-button {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .correct-answer {
+            font-weight: bold;
+            color: green;
+        }
     </style>
 </head>
 <body>
     <h1>Тест</h1>
+    <div class="shuffle-button">
+        <button onclick="shuffleQuestions()">Сұрақтарды араластыру</button>
+        <button onclick="shuffleCurrentPageQuestions()">Беттің сұрақтарын араластыру</button>
+        <button onclick="showCorrectAnswers()">Дұрыс жауаптарды көрсету</button>
+        <button onclick="resetAll()">Бастапқыға қайтару</button>
+    </div>
     <div id="quiz"></div>
+    <div class="pagination" id="pagination"></div>
 
     <script>
+        let currentPage = 1;
+        const questionsPerPage = 50;
+        let allQuestions = [];
+
         async function loadTest() {
             try {
                 const response = await fetch('test.txt');
                 if (!response.ok) throw new Error(`Файлды жүктеу қателігі: ${response.status}`);
                 const text = await response.text();
-                const questions = text.split('<question>').filter(q => q.trim());
 
-                const quizDiv = document.getElementById('quiz');
-                questions.forEach((questionText, index) => {
-                    const [question, ...variants] = questionText.split('<variant>').map(s => s.trim());
+                const questions = text.split('~~').filter(q => q.trim());
+                allQuestions = questions;
 
-                    // Правильный ответ всегда первый, затем остальные варианты
-                    const correctVariant = variants[0];
-                    const wrongVariants = variants.slice(1);
-
-                    // Перемешиваем остальные варианты
-                    const allVariants = shuffleVariants([correctVariant, ...wrongVariants]);
-
-                    const questionDiv = document.createElement('div');
-                    questionDiv.classList.add('question');
-                    questionDiv.id = `q${index}`;
-
-                    // Добавляем нумерацию вопроса
-                    const questionElem = document.createElement('p');
-                    questionElem.textContent = `${index + 1}. ${question}`; // Нумерация вопросов
-                    questionDiv.appendChild(questionElem);
-
-                    // Метки для вариантов ответа: A, B, C, D, E
-                    const labels = ['A', 'B', 'C', 'D', 'E'];
-
-                    // Найдём индекс правильного ответа в перемешанном массиве
-                    const correctAnswerIndex = allVariants.indexOf(correctVariant);
-
-                    // Варианты ответа
-                    allVariants.forEach((variant, vIndex) => {
-                        const label = document.createElement('label');
-                        label.classList.add('variant');
-                        label.innerHTML = `<input type="radio" name="q${index}" value="${vIndex === correctAnswerIndex ? 'correct' : 'wrong'}"> ${labels[vIndex]}. ${variant}`;
-                        questionDiv.appendChild(label);
-                    });
-
-                    // Кнопка для проверки и блок для отображения результата
-                    const checkButton = document.createElement('button');
-                    checkButton.textContent = 'Тексеру';
-                    checkButton.onclick = function() {
-                        checkAnswer(index, correctAnswerIndex); // Передаем правильный индекс для проверки
-                    };
-
-                    const resultDiv = document.createElement('div');
-                    resultDiv.id = `result${index}`;
-                    questionDiv.appendChild(resultDiv);
-
-                    questionDiv.appendChild(checkButton);
-                    quizDiv.appendChild(questionDiv);
-                });
+                renderPage(currentPage);
+                renderPagination();
             } catch (error) {
                 document.getElementById('quiz').textContent = `Қате: ${error.message}`;
             }
         }
 
+        function shuffleQuestions() {
+            allQuestions = shuffleVariants(allQuestions);
+            currentPage = 1;
+            renderPage(currentPage);
+            renderPagination();
+        }
+
+        function shuffleCurrentPageQuestions() {
+            const start = (currentPage - 1) * questionsPerPage;
+            const end = currentPage * questionsPerPage;
+            const currentQuestions = allQuestions.slice(start, end);
+            const shuffledCurrentQuestions = shuffleVariants(currentQuestions);
+            allQuestions.splice(start, questionsPerPage, ...shuffledCurrentQuestions);
+            renderPage(currentPage);
+        }
+
+        function renderPage(page) {
+            const quizDiv = document.getElementById('quiz');
+            quizDiv.innerHTML = '';
+
+            const start = (page - 1) * questionsPerPage;
+            const end = page * questionsPerPage;
+            const pageQuestions = allQuestions.slice(start, end);
+
+            pageQuestions.forEach((questionBlock, index) => {
+                const lines = questionBlock.split('\n')
+                    .map(line => line.replace(/\{.*?\}/g, '').trim())
+                    .filter(line => line);
+
+                if (lines.length < 2) return;
+
+                const question = lines[0];
+                const variants = lines.slice(1).map(line => line.replace('@@', '').trim());
+
+                const correctVariant = variants[0];
+                const wrongVariants = variants.slice(1);
+                const allVariants = shuffleVariants([correctVariant, ...wrongVariants]);
+
+                const questionDiv = document.createElement('div');
+                questionDiv.classList.add('question');
+                questionDiv.id = `q${start + index}`;
+
+                const questionElem = document.createElement('p');
+                questionElem.textContent = `${start + index + 1}. ${question}`;
+                questionDiv.appendChild(questionElem);
+
+                const labels = ['A', 'B', 'C', 'D', 'E'];
+                const correctAnswerIndex = allVariants.indexOf(correctVariant);
+
+                allVariants.forEach((variant, vIndex) => {
+                    const label = document.createElement('label');
+                    label.classList.add('variant');
+                    label.innerHTML = `<input type="radio" name="q${start + index}" value="${vIndex === correctAnswerIndex ? 'correct' : 'wrong'}"> ${labels[vIndex]}. ${variant}`;
+                    if (vIndex === correctAnswerIndex) {
+                        label.dataset.correct = true;
+                    }
+                    questionDiv.appendChild(label);
+                });
+
+                const checkButton = document.createElement('button');
+                checkButton.textContent = 'Тексеру';
+                checkButton.onclick = function () {
+                    checkAnswer(start + index, correctAnswerIndex);
+                };
+
+                const resultDiv = document.createElement('div');
+                resultDiv.id = `result${start + index}`;
+                questionDiv.appendChild(resultDiv);
+
+                questionDiv.appendChild(checkButton);
+                quizDiv.appendChild(questionDiv);
+            });
+        }
+
+        function renderPagination() {
+            const paginationDiv = document.getElementById('pagination');
+            paginationDiv.innerHTML = '';
+
+            const totalPages = Math.ceil(allQuestions.length / questionsPerPage);
+            for (let i = 1; i <= totalPages; i++) {
+                const button = document.createElement('button');
+                button.textContent = i;
+                button.onclick = () => {
+                    currentPage = i;
+                    renderPage(currentPage);
+                    renderPagination();  // Re-render pagination after changing page
+                };
+
+                // Highlight the current page button
+                if (i === currentPage) {
+                    button.classList.add('active');
+                }
+                
+                paginationDiv.appendChild(button);
+            }
+        }
+
         function shuffleVariants(variants) {
-            // Метод для перемешивания массива
             const shuffled = [...variants];
             for (let i = shuffled.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -125,7 +216,6 @@
                 return;
             }
 
-            // Проверка правильности
             if (selectedOption.value === 'correct') {
                 resultDiv.textContent = 'Дұрыс жауап';
                 resultDiv.className = 'question-result correct';
@@ -135,7 +225,19 @@
             }
         }
 
-        // Жүктуем тесты при загрузке страницы
+        function showCorrectAnswers() {
+            allQuestions.forEach((_, index) => {
+                const correctLabel = document.querySelector(`#q${index} label[data-correct="true"]`);
+                if (correctLabel) {
+                    correctLabel.classList.add('correct-answer');
+                }
+            });
+        }
+
+        function resetAll() {
+            loadTest();
+        }
+
         loadTest();
     </script>
 </body>
